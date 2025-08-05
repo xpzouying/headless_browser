@@ -7,7 +7,7 @@ import (
 
 func TestNavigate(t *testing.T) {
 
-	b := NewBrowser(WithHeadless(false))
+	b := New(WithHeadless(false))
 	defer b.Close()
 
 	page := b.NewPage()
