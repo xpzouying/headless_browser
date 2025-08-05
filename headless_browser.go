@@ -15,42 +15,42 @@ type Browser struct {
 	launcher *launcher.Launcher
 }
 
-type BrowserConfig struct {
+type Config struct {
 	Headless  bool
 	UserAgent string
 	Cookies   string
 }
 
-type BrowserOption func(*BrowserConfig)
+type Option func(*Config)
 
-func newDefaultConfig() *BrowserConfig {
-	return &BrowserConfig{
+func newDefaultConfig() *Config {
+	return &Config{
 		Headless:  true,
 		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Cookies:   "",
 	}
 }
 
-func WithHeadless(headless bool) BrowserOption {
-	return func(c *BrowserConfig) {
+func WithHeadless(headless bool) Option {
+	return func(c *Config) {
 		c.Headless = headless
 	}
 }
 
-func WithUserAgent(userAgent string) BrowserOption {
-	return func(c *BrowserConfig) {
+func WithUserAgent(userAgent string) Option {
+	return func(c *Config) {
 		c.UserAgent = userAgent
 	}
 }
 
-func WithCookies(cookies string) BrowserOption {
+func WithCookies(cookies string) Option {
 
-	return func(c *BrowserConfig) {
+	return func(c *Config) {
 		c.Cookies = cookies
 	}
 }
 
-func NewBrowser(options ...BrowserOption) *Browser {
+func New(options ...Option) *Browser {
 
 	cfg := newDefaultConfig()
 	for _, option := range options {
