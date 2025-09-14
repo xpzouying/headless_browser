@@ -19,10 +19,12 @@ type Browser struct {
 
 // Config holds the configuration options for the browser.
 type Config struct {
-	Headless     bool   // Whether to run browser in headless mode
-	UserAgent    string // Custom user agent string
-	Cookies      string // JSON string of cookies to set
+	Headless      bool   // Whether to run browser in headless mode
+	UserAgent     string // Custom user agent string
+	Cookies       string // JSON string of cookies to set
 	ChromeBinPath string // Custom Chrome/Chromium executable path
+
+	Trace bool // Whether to enable tracing (not implemented yet)
 }
 
 // Option is a functional option for configuring the browser.
@@ -31,10 +33,11 @@ type Option func(*Config)
 // newDefaultConfig returns a new Config with default values.
 func newDefaultConfig() *Config {
 	return &Config{
-		Headless:  true,
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		Cookies:   "",
+		Headless:      true,
+		UserAgent:     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		Cookies:       "",
 		ChromeBinPath: "", // Empty means auto-detect
+		Trace:         false,
 	}
 }
 
@@ -72,6 +75,12 @@ func WithChromeBinPath(path string) Option {
 	}
 }
 
+func WithTrace() Option {
+	return func(c *Config) {
+		c.Trace = true
+	}
+}
+
 // New creates a new Browser instance with the provided options.
 // It initializes a Chrome browser with stealth mode enabled.
 func New(options ...Option) *Browser {
@@ -96,7 +105,7 @@ func New(options ...Option) *Browser {
 
 	browser := rod.New().
 		ControlURL(url).
-		Trace(true).
+		Trace(cfg.Trace).
 		MustConnect()
 
 	// 加载 cookies
