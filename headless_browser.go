@@ -19,9 +19,10 @@ type Browser struct {
 
 // Config holds the configuration options for the browser.
 type Config struct {
-	Headless  bool   // Whether to run browser in headless mode
-	UserAgent string // Custom user agent string
-	Cookies   string // JSON string of cookies to set
+	Headless     bool   // Whether to run browser in headless mode
+	UserAgent    string // Custom user agent string
+	Cookies      string // JSON string of cookies to set
+	ChromeBinPath string // Custom Chrome/Chromium executable path
 }
 
 // Option is a functional option for configuring the browser.
@@ -33,6 +34,7 @@ func newDefaultConfig() *Config {
 		Headless:  true,
 		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 		Cookies:   "",
+		ChromeBinPath: "", // Empty means auto-detect
 	}
 }
 
@@ -58,6 +60,18 @@ func WithCookies(cookies string) Option {
 	}
 }
 
+// WithChromeBinPath sets a custom Chrome/Chromium executable path.
+// If not set or empty, launcher will auto-detect or download a browser.
+// Common paths:
+//   - macOS: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+//   - Linux: "/usr/bin/google-chrome" or "/usr/bin/chromium"
+//   - Windows: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+func WithChromeBinPath(path string) Option {
+	return func(c *Config) {
+		c.ChromeBinPath = path
+	}
+}
+
 // New creates a new Browser instance with the provided options.
 // It initializes a Chrome browser with stealth mode enabled.
 func New(options ...Option) *Browser {
@@ -66,14 +80,19 @@ func New(options ...Option) *Browser {
 		option(cfg)
 	}
 
-	launcher := launcher.New().
+	l := launcher.New().
 		Headless(cfg.Headless).
 		Set("--no-sandbox").
 		Set(
 			"user-agent", cfg.UserAgent,
 		)
 
-	url := launcher.MustLaunch()
+	// Set custom Chrome binary path if provided
+	if cfg.ChromeBinPath != "" {
+		l = l.Bin(cfg.ChromeBinPath)
+	}
+
+	url := l.MustLaunch()
 
 	browser := rod.New().
 		ControlURL(url).
@@ -92,7 +111,7 @@ func New(options ...Option) *Browser {
 
 	return &Browser{
 		browser:  browser,
-		launcher: launcher,
+		launcher: l,
 	}
 }
 
