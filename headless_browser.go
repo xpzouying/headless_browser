@@ -3,6 +3,8 @@ package headless_browser
 
 import (
 	"encoding/json"
+	"net/url"
+	"strings"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -23,6 +25,7 @@ type Config struct {
 	UserAgent     string // Custom user agent string
 	Cookies       string // JSON string of cookies to set
 	ChromeBinPath string // Custom Chrome/Chromium executable path
+	Proxy         string // HTTP/HTTPS/SOCKS5 proxy server
 
 	Trace bool // Whether to enable tracing (not implemented yet)
 }
@@ -75,10 +78,41 @@ func WithChromeBinPath(path string) Option {
 	}
 }
 
+// WithProxy sets a proxy server for all browser requests.
+// Supports HTTP, HTTPS, and SOCKS5 proxies.
+// Example formats:
+//   - "http://proxy.example.com:8080"
+//   - "socks5://127.0.0.1:1080"
+//   - "http://user:pass@proxy:8080"
+func WithProxy(proxy string) Option {
+	return func(c *Config) {
+		c.Proxy = proxy
+	}
+}
+
 func WithTrace() Option {
 	return func(c *Config) {
 		c.Trace = true
 	}
+}
+
+// maskProxyCredentials masks username and password in proxy URL for safe logging.
+// Example: "http://user:pass@proxy:8080" -> "http://***:***@proxy:8080"
+func maskProxyCredentials(proxyURL string) string {
+	u, err := url.Parse(proxyURL)
+	if err != nil || u.User == nil {
+		// If parse fails or no credentials, return as-is
+		return proxyURL
+	}
+	
+	// Mask the credentials
+	if password, hasPassword := u.User.Password(); hasPassword {
+		u.User = url.UserPassword("***", "***")
+	} else {
+		u.User = url.User("***")
+	}
+	
+	return u.String()
 }
 
 // New creates a new Browser instance with the provided options.
@@ -99,6 +133,12 @@ func New(options ...Option) *Browser {
 	// Set custom Chrome binary path if provided
 	if cfg.ChromeBinPath != "" {
 		l = l.Bin(cfg.ChromeBinPath)
+	}
+
+	// Set proxy server if provided
+	if cfg.Proxy != "" {
+		l = l.Set("--proxy-server", cfg.Proxy)
+		logrus.Infof("Using proxy server: %s", maskProxyCredentials(cfg.Proxy))
 	}
 
 	url := l.MustLaunch()
