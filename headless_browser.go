@@ -4,7 +4,6 @@ package headless_browser
 import (
 	"encoding/json"
 	"net/url"
-	"strings"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -106,7 +105,7 @@ func maskProxyCredentials(proxyURL string) string {
 	}
 	
 	// Mask the credentials
-	if password, hasPassword := u.User.Password(); hasPassword {
+	if _, hasPassword := u.User.Password(); hasPassword {
 		u.User = url.UserPassword("***", "***")
 	} else {
 		u.User = url.User("***")
