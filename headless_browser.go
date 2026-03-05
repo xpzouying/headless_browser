@@ -3,6 +3,7 @@ package headless_browser
 
 import (
 	"encoding/json"
+	"net/url"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -13,8 +14,9 @@ import (
 
 // Browser represents a headless browser instance with an underlying rod.Browser and launcher.
 type Browser struct {
-	browser  *rod.Browser
-	launcher *launcher.Launcher
+	browser         *rod.Browser
+	launcher        *launcher.Launcher
+	proxyForwarder  *ProxyForwarder // 代理转发器
 }
 
 // Config holds the configuration options for the browser.
@@ -23,7 +25,7 @@ type Config struct {
 	UserAgent     string // Custom user agent string
 	Cookies       string // JSON string of cookies to set
 	ChromeBinPath string // Custom Chrome/Chromium executable path
-	Proxy         string // Proxy server URL (e.g. "http://host:port", "socks5://host:port")
+	Proxy         string // Proxy server URL (e.g. "http://host:port", "socks5://user:pass@host:port")
 
 	Trace bool // Whether to enable tracing (not implemented yet)
 }
@@ -78,11 +80,13 @@ func WithChromeBinPath(path string) Option {
 
 // WithProxy sets a proxy server for all browser requests.
 // Supports HTTP, HTTPS, and SOCKS5 proxies.
-// Example: "http://proxy.example.com:8080", "socks5://127.0.0.1:1080"
 //
-// Note: Chrome's --proxy-server flag does not support embedded credentials
-// (e.g. "http://user:pass@host:port"). For authenticated proxies, handle
-// authentication separately at the page level.
+// Examples:
+//   - Without authentication: "http://proxy.example.com:8080", "socks5://127.0.0.1:1080"
+//   - With authentication: "http://user:pass@proxy.example.com:8080", "socks5://user:pass@127.0.0.1:1080"
+//
+// For authenticated proxies, a local forwarder will be automatically created
+// to handle the authentication.
 func WithProxy(proxy string) Option {
 	return func(c *Config) {
 		c.Proxy = proxy
@@ -115,9 +119,32 @@ func New(options ...Option) *Browser {
 		l = l.Bin(cfg.ChromeBinPath)
 	}
 
-	// Set proxy server if provided
-	if cfg.Proxy != "" {
-		l = l.Proxy(cfg.Proxy)
+	// 处理代理设置
+	var proxyForwarder *ProxyForwarder
+	proxyURL := cfg.Proxy
+
+	if proxyURL != "" {
+		// 检查是否需要代理转发（带认证的代理）
+		parsed, err := url.Parse(proxyURL)
+		if err == nil && parsed.User != nil {
+			// 带认证的代理，创建本地转发器
+			proxyForwarder, err = NewProxyForwarder(proxyURL)
+			if err != nil {
+				logrus.Errorf("failed to create proxy forwarder: %v", err)
+				// 继续使用原代理 URL，让 Chrome 自己处理
+			} else {
+				if err := proxyForwarder.Start(); err != nil {
+					logrus.Errorf("failed to start proxy forwarder: %v", err)
+				} else {
+					// 使用本地转发器地址
+					proxyURL = "http://" + proxyForwarder.GetLocalAddr()
+					logrus.Infof("Using authenticated proxy via local forwarder: %s", proxyURL)
+				}
+			}
+		}
+
+		// 设置代理
+		l = l.Proxy(proxyURL)
 	}
 
 	url := l.MustLaunch()
@@ -138,8 +165,9 @@ func New(options ...Option) *Browser {
 	}
 
 	return &Browser{
-		browser:  browser,
-		launcher: l,
+		browser:        browser,
+		launcher:       l,
+		proxyForwarder: proxyForwarder,
 	}
 }
 
@@ -147,6 +175,13 @@ func New(options ...Option) *Browser {
 func (b *Browser) Close() {
 	b.browser.MustClose()
 	b.launcher.Cleanup()
+
+	// 停止代理转发器
+	if b.proxyForwarder != nil {
+		if err := b.proxyForwarder.Stop(); err != nil {
+			logrus.Errorf("failed to stop proxy forwarder: %v", err)
+		}
+	}
 }
 
 // NewPage creates a new page with stealth mode enabled.
