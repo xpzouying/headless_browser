@@ -106,9 +106,17 @@ func New(options ...Option) *Browser {
 	l := launcher.New().
 		Headless(cfg.Headless).
 		Set("--no-sandbox").
+		// Hide automation traces at launcher level. stealth.MustPage only patches
+		// JS-side fingerprints after page load; these flags close the gap by
+		// preventing navigator.webdriver=true before any script runs.
+		Set("disable-blink-features", "AutomationControlled").
 		Set(
 			"user-agent", cfg.UserAgent,
 		)
+
+	// go-rod injects --enable-automation by default; remove it so the browser
+	// doesn't advertise itself as a controlled instance.
+	l.Delete("enable-automation")
 
 	// Set custom Chrome binary path if provided
 	if cfg.ChromeBinPath != "" {
