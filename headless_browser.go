@@ -309,8 +309,12 @@ func primaryLang(lang string) string {
 }
 
 // Close closes the browser and cleans up resources.
+// It first attempts a graceful close via the DevTools protocol,
+// then forcefully kills the Chrome process to prevent zombie processes,
+// and finally cleans up the temporary user data directory.
 func (b *Browser) Close() {
 	b.browser.MustClose()
+	b.launcher.Kill()
 	b.launcher.Cleanup()
 }
 
