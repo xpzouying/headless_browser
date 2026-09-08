@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -308,10 +309,52 @@ func primaryLang(lang string) string {
 	return lang
 }
 
+const (
+	// 等待浏览器正常关闭的时间，超时视为无响应
+	closeTimeout = 10 * time.Second
+	// 等待浏览器进程退出的时间，超时则强制结束
+	cleanupTimeout = 5 * time.Second
+)
+
 // Close closes the browser and cleans up resources.
+// 浏览器进程没退出时，launcher.Cleanup 会一直阻塞在等待退出的 channel 上，
+// 调用方连同进程一起泄漏，因此两步都加超时，超时后强制 kill。
 func (b *Browser) Close() {
-	b.browser.MustClose()
-	b.launcher.Cleanup()
+	if !runWithTimeout(closeTimeout, func() {
+		// 连接已断开时 MustClose 会 panic，交给下面的 Kill 兜底
+		defer func() { _ = recover() }()
+
+		b.browser.MustClose()
+	}) {
+		logrus.Warnf("close browser timeout: pid=%d", b.launcher.PID())
+	}
+
+	// Cleanup 等浏览器进程退出后删除临时目录，超时说明进程还活着
+	if runWithTimeout(cleanupTimeout, b.launcher.Cleanup) {
+		return
+	}
+
+	logrus.Warnf("browser process still alive, force kill: pid=%d", b.launcher.PID())
+	b.launcher.Kill()
+	_ = runWithTimeout(cleanupTimeout, b.launcher.Cleanup)
+}
+
+// runWithTimeout 执行 fn，返回是否在超时前完成。
+func runWithTimeout(timeout time.Duration, fn func()) bool {
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		fn()
+	}()
+
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // NewPage creates a new page.
